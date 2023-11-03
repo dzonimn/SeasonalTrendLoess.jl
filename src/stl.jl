@@ -19,12 +19,12 @@ function sma(x, n::Integer; center::Bool = true)
     if n == 1
         return x
     end
-    res = Vector{Any}(missing,N)
+    res = repeat([NaN], N)
 
     # initial and final value positions
-    ivp = findfirst(!ismissing, x)
-    fvp = findlast(!ismissing, x)
-    
+    ivp = findfirst(!isnan, x)
+    fvp = findlast(!isnan, x)
+
     # using missing values to center ma 
     a = center ? div(n,2) : 0
 
@@ -34,7 +34,7 @@ function sma(x, n::Integer; center::Bool = true)
     for i in 1:(N-n-ivp-(N-fvp)+1)
         resai = ma + (x[n+ivp+i-1] - x[ivp+i-1])/n
         # missing values are imputed
-        res[a+ivp+i] = ismissing(resai) ? ma : resai
+        res[a+ivp+i] = isnan(resai) ? ma : resai
         ma = res[a+ivp+i]
     end
     return res
@@ -156,7 +156,7 @@ function stl(Yv::Vector{T},
             ## 3. Low-Pass Filtering of Smoothed Cycle-Subseries
             ### centered support instead 1:N to balance out machine error
             Lv = loess(1-ceil(N/2):N-ceil(N/2),
-                       collect(skipmissing(sma(sma(sma(Cv,np),np),3))),
+                       filter(!isnan, sma(sma(sma(Cv, np), np), 3)),
                        d=1,q=nl,rho=rhov)
             ## 4. Detreending of Smoothed Cycle-Subseries
             ### Lv is substracted to prevent low-frenquency power

@@ -66,7 +66,7 @@ function loess(xv,yv;
     @assert (d==1) | (d==2) "Linear Regression must be of degree 1 or 2"
     @assert length(findall(x -> ismissing(x), xv)) == 0  "xv should not contain missing values"
 
-    myi = findall(x -> !ismissing(x),yv)
+    myi = findall(x -> !isnan(x), yv)
     xv = xv[myi]
     yv = yv[myi]
     rho = rho[myi]
