@@ -1,14 +1,14 @@
 # TODO Check faster implementations in computational methods for local regression
 # William S. Cleveland & E. Grosse https://link.springer.com/article/10.1007/BF01890836
-function ghat(x::Float64;A,b,d=2,q,rho)
+@views function ghat(x::Float64;A,b,d=2,q,rho)
               
     xv = A[:,d]
-    yv = b
+    # yv = b
     ## lambda q
     n = length(xv)
     q = min(q,n)
     xvx = @. abs(xv-x)
-    qidx = sortperm(xvx)[1:q]
+    qidx = partialsortperm(xvx, 1:q)
     qdist = abs(xv[last(qidx)]-x)*max(1,q/n)
 
     ## upsilon
@@ -23,8 +23,12 @@ function ghat(x::Float64;A,b,d=2,q,rho)
     
     lsq_x = A \ b
 
-    d == 1 ? [x,1.0]'*lsq_x : [x^2.0,x,1.0]'*lsq_x
 
+  if d == 1
+    return x * lsq_x[1] + 1.0 * lsq_x[2]
+  else
+    return x^2 * lsq_x[1] + x * lsq_x[2] + lsq_x[3]
+  end
 end
 
 
@@ -57,15 +61,14 @@ julia> loess(rand(5), rand(5); predict=rand(10))
 [...]
 ```
 """
-function loess(xv,yv;
+@views function loess(xv,yv;
                d=2,
                q=Int64(round(3/4*length(xv))),
                rho=repeat([1.0],inner=length(xv)),  
                predict = xv)
     
     @assert (d==1) | (d==2) "Linear Regression must be of degree 1 or 2"
-    @assert length(findall(x -> ismissing(x), xv)) == 0  "xv should not contain missing values"
-
+    @assert length(findall(x -> isnan(x), xv)) == 0  "xv should not contain missing values"
     myi = findall(x -> !isnan(x), yv)
     xv = xv[myi]
     yv = yv[myi]
@@ -74,12 +77,12 @@ function loess(xv,yv;
     res = zeros(length(predict))
 
     ## Ax = b
-    A = hcat(xv,repeat([1.0],inner=length(xv)))
+    A = hcat(xv, ones(length(xv)))
     b = yv
     d == 2 ? A = hcat(xv .^ 2.0, A) : nothing
 
-    for (i,xi) in enumerate(predict)
-        res[i] = ghat(xi;A=A,b=b,d=d,q=q,rho=rho)
+    Threads.@threads for i in eachindex(predict)
+        @inbounds res[i] = ghat(predict[i];A,b,d,q,rho)
     end
-    res
+    return res
 end
