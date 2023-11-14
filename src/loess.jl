@@ -1,6 +1,6 @@
 # TODO Check faster implementations in computational methods for local regression
 # William S. Cleveland & E. Grosse https://link.springer.com/article/10.1007/BF01890836
-@views function ghat(x::Float64;A,b,d=2,q,rho)
+@views function ghat(x::Float64;A,b,d=2,q,rho,temp_A,temp_b)
               
     xv = A[:,d]
     # yv = b
@@ -18,10 +18,14 @@
         w[wi] = max((1-aq^3)^3,0)
     end
     
-    A = @. A*(w*rho)
-    b = @. b*(w*rho)
+    for i in 1:n
+        for j in 1:size(A)[2]
+            temp_A[i,j] = A[i,j]*w[i]*rho[i]
+        end
+        temp_b[i] = b[i]*w[i]*rho[i]
+    end
     
-    lsq_x = A \ b
+    lsq_x = temp_A[1:n, :] \ temp_b[1:n]
 
 
   if d == 1
@@ -65,7 +69,8 @@ julia> loess(rand(5), rand(5); predict=rand(10))
                d=2,
                q=Int64(round(3/4*length(xv))),
                rho=repeat([1.0],inner=length(xv)),  
-               predict = xv)
+               predict = xv,
+               temp_A,temp_b)
     
     @assert (d==1) | (d==2) "Linear Regression must be of degree 1 or 2"
     @assert length(findall(x -> isnan(x), xv)) == 0  "xv should not contain missing values"
@@ -81,8 +86,8 @@ julia> loess(rand(5), rand(5); predict=rand(10))
     b = yv
     d == 2 ? A = hcat(xv .^ 2.0, A) : nothing
 
-    Threads.@threads for i in eachindex(predict)
-        @inbounds res[i] = ghat(predict[i];A,b,d,q,rho)
+    for i in eachindex(predict)
+        res[i] = ghat(predict[i];A,b,d,q,rho,temp_A,temp_b)
     end
     return res
 end

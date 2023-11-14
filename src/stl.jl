@@ -13,13 +13,13 @@ function nextodd(x::T)::Integer where T <: Real
     return isodd(cx) ? cx+1 : cx
 end
 
-function sma(x, n::Integer; center::Bool = true)
+@views function sma(x, n::Integer; center::Bool = true)
     N = length(x)
     @assert 1 <= n & n <= N
     if n == 1
         return x
     end
-    res = repeat([NaN], N)
+    res = fill(NaN, N)
 
     # initial and final value positions
     ivp = findfirst(!isnan, x)
@@ -128,7 +128,15 @@ function stl(Yv::Vector{T},
     scnv = false # seasonal convergence flag
     tcnv = false # trend convergence flag
     o = 0
+    if spm
+        temp_A = Matrix{Float64}(undef, N, 3)
+    else
+        temp_A = Matrix{Float64}(undef, N, 2)
+    end
+    temp_b = Vector{Float64}(undef, N)
     while robust | (o <= no)
+        temp_A .= 0.0
+        temp_b .= 0.0
         for k in 1:ni
             # Updating sesonal and trend components
             ## 1. Detrending (Yv = Tv + Sv)
@@ -151,13 +159,13 @@ function stl(Yv::Vector{T},
                 Cv[csi:np:N+2*np] = loess(csi:np:N,
                                           Sv[csi:np:N];
                                           q=ns,d=1,rho=rhov[csi:np:N],
-                                          predict=(1.0*csi-np):np:(N+np))
+                                          predict=(1.0*csi-np):np:(N+np),temp_A=temp_A,temp_b=temp_b)
             end
             ## 3. Low-Pass Filtering of Smoothed Cycle-Subseries
             ### centered support instead 1:N to balance out machine error
             Lv = loess(1-ceil(N/2):N-ceil(N/2),
                        filter(!isnan, sma(sma(sma(Cv, np), np), 3)),
-                       d=1,q=nl,rho=rhov)
+                       d=1,q=nl,rho=rhov,temp_A=temp_A,temp_b=temp_b)
             ## 4. Detreending of Smoothed Cycle-Subseries
             ### Lv is substracted to prevent low-frenquency power
             ### from entering the seasonal component.
@@ -170,7 +178,7 @@ function stl(Yv::Vector{T},
             ## 6. Trend Smoothing
             ### centered support instead 1:N to balance out machine error
             ### (floor isntead ceil like in Lv to balance out even lengths)
-            Tv = loess(1-floor(N/2):N-floor(N/2),Dv,q=nt,d=1,rho=rhov)
+            Tv = loess(1-floor(N/2):N-floor(N/2),Dv,q=nt,d=1,rho=rhov,temp_A=temp_A,temp_b=temp_b)
 
             ### Trend convergence criterion
             Md = maximum(abs.(skipmissing(Tv-Tv0)))
@@ -209,7 +217,9 @@ function stl(Yv::Vector{T},
     if spm
         # Using div(np,7) as default to approximate
         # the q=51 for a np=365 chosen in the original paper
-        Sv = loess(1-ceil(N/2):N-ceil(N/2),Sv,q=qsmp)
+        temp_A .= 0.0
+        temp_b .= 0.0
+        Sv = loess(1-ceil(N/2):N-ceil(N/2),Sv,q=qsmp,temp_A=temp_A,temp_b=temp_b)
         Rv = Yv - Tv - Sv
     end
     
